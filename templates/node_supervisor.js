@@ -6,6 +6,7 @@ process.chdir(__dirname);
 const { Worker } = require("worker_threads");
 const readline = require("readline");
 const EventEmitter = require("events");
+const { performance } = require("perf_hooks");
 
 // Global variables
 let nbTests, doneTests, todoTests;
@@ -32,6 +33,7 @@ reporter.ports.signalFinished.subscribe((code) => {
   runners.forEach((runner) => runner.terminate());
   working = false;
   supervisorEvent.emit("finishedWork");
+  console.error("Running duration (real total):", Math.round(performance.now()), "ms\n")
   process.exit(code);
 });
 
@@ -64,7 +66,7 @@ function handleRunnerMsg(runner, runnerFile, msg) {
   if (msg.type_ == "nbTests") {
     setupWithNbTests(runnerFile, msg.nbTests);
   } else if (msg.type_ == "result") {
-    handleResult(runner, msg.id, msg.result);
+    handleResult(runner, msg.id, msg.startTime, msg.endTime, msg.result);
   } else {
     console.error("Invalid runner msg.type_:", msg.type_);
   }
@@ -99,11 +101,11 @@ function setupWithNbTests(runnerFile, nb) {
 }
 
 // Update supervisor tests, transfer result to reporter and ask to run another test
-function handleResult(runner, id, result) {
+function handleResult(runner, id, startTime, endTime, result) {
   doneTests[id] = true;
   const nextTest = todoTests.pop();
   if (nextTest != undefined) {
     runner.postMessage({ type_: "runTest", id: nextTest });
   }
-  reporter.ports.incomingResult.send(result);
+  reporter.ports.incomingResult.send({ duration: endTime - startTime, result: result });
 }
